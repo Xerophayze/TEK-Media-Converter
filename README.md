@@ -48,16 +48,27 @@ Key files referenced in code:
 
 ## Installation
 
-- Double-click `run_converter.bat` from `ImageConverter/`.
+There are two ways to run the app:
+
+### Option A: Clone + Batch Launcher (portable)
+
+- Clone or download this repository.
+- Double-click `run_converter.bat` in `ImageConverter/`.
 - A small progress window will appear while:
   - Python is detected/installed if needed
-  - A virtual environment is created
+  - A virtual environment is created next to `run_converter.bat`
   - Dependencies from `requirements.txt` are installed
   - Tcl/Tk is verified and initialized
 - A desktop shortcut “Image Converter.lnk” is created (icon from `resources/tekutah_logo_icon_Square.ico`).
 - The GUI launches automatically. Closing the GUI closes the console window.
 
-Note: The venv is created under a temp working folder to keep the app’s directory uncluttered.
+Note: For Option A, the virtual environment is created in the same directory as `run_converter.bat`.
+
+### Option B: Self-contained Installer (EXE)
+
+- Download and run the provided installer EXE.
+- The installer places the application in a data location (no admin required) and creates a desktop shortcut.
+- The EXE is fully self-contained — it does not require any other files from this repository to run.
 
 ## Usage
 
