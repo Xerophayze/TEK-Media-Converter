@@ -10,11 +10,15 @@ A lightweight Windows GUI to batch convert images (including HEIC) to common for
 - JPEG quality slider
 - Output to source folder or a selected destination
 - Desktop shortcut auto-created with custom icon
+- Detailed file list with filename, size, and dimensions
+- Help menu:
+  - View Git Page (opens project repository)
 - File menu:
   - Uninstall… (self-removes app folder and desktop shortcut)
   - Exit
 - Silent installer with progress UI and auto Python setup
 - Tcl/Tk initialization handled for first run on clean systems
+- Smart overwrite handling: if a target file already exists, choose to Replace (overwrite) or Keep originals (appends a unique " (n)" suffix)
 
 ## Folder structure
 
@@ -64,6 +68,12 @@ Note: The venv is created under a temp working folder to keep the app’s direct
   - Resize options (W/H) and “Keep Aspect Ratio”
   - Output folder (leave as “Output: Same as source folder” for in-place outputs)
 - Click Convert. A summary dialog shows successes/failures; the list clears after completion.
+
+Notes:
+- When “Keep Aspect Ratio” is checked, height is disabled; uncheck to specify both width and height.
+- If any output files already exist in the chosen destination, you’ll be prompted once for the action for this batch:
+  - Yes = Replace originals (overwrite)
+  - No = Keep originals (the app writes new files as `filename (1).ext`, `filename (2).ext`, …)
 
 ## Uninstall
 

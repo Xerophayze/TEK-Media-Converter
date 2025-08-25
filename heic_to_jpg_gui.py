@@ -17,8 +17,10 @@ for module in REQUIRED_MODULES:
 # Now import them
 import os
 import tempfile
+import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, Listbox, Scrollbar, Button, OptionMenu, StringVar
+from tkinter import ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image, ImageTk
 import pillow_heif
@@ -33,7 +35,17 @@ ICON_PATH = os.path.join(RESOURCES_DIR, "tekutah_logo_icon_Square.ico")
 LOGO_PATH = os.path.join(RESOURCES_DIR, "AppLogo.png")
 LOGO_SCALE = 0.10  # Scale logo to 25% of original size
 
-def convert_image(input_path, output_format, output_folder, width=None, height=None, keep_aspect=True, jpeg_quality=95):
+def unique_path(path: str) -> str:
+    """Return a non-colliding path by appending " (n)" before the extension."""
+    base, ext = os.path.splitext(path)
+    i = 1
+    candidate = f"{base} ({i}){ext}"
+    while os.path.exists(candidate):
+        i += 1
+        candidate = f"{base} ({i}){ext}"
+    return candidate
+
+def convert_image(input_path, output_format, output_folder, width=None, height=None, keep_aspect=True, jpeg_quality=95, conflict='keep'):
     try:
         image = Image.open(input_path)
 
@@ -66,6 +78,12 @@ def convert_image(input_path, output_format, output_folder, width=None, height=N
         else:
             output_path = os.path.splitext(input_path)[0] + f".{output_format.lower()}"
 
+        # Handle existing file conflicts
+        if os.path.exists(output_path):
+            if conflict == 'keep':
+                output_path = unique_path(output_path)
+            # if 'replace', proceed to overwrite
+
         # --- Save Logic ---
         save_options = {}
         if output_format.upper() == 'JPEG':
@@ -82,16 +100,12 @@ def browse_files():
         filetypes=[("Image Files", "*.heic *.png *.jpg *.jpeg *.bmp *.gif *.tiff"), ("All files", "*.*")]
     )
     for file in files:
-        if file not in file_list:
-            file_list.append(file)
-            listbox.insert(tk.END, file)
+        add_file(file)
 
 def drop_files(event):
     files = root.tk.splitlist(event.data)
     for file in files:
-        if file not in file_list:
-            file_list.append(file)
-            listbox.insert(tk.END, file)
+        add_file(file)
 
 def convert_all():
     if not file_list:
@@ -116,10 +130,31 @@ def convert_all():
     keep_aspect = aspect_ratio_var.get()
     jpeg_quality = quality_var.get()
 
+    # Determine conflict policy if any output targets already exist
+    replace_policy = 'keep'
+    conflicts_found = False
+    for f in file_list:
+        file_name = os.path.basename(f)
+        file_base, _ = os.path.splitext(file_name)
+        if output_folder:
+            out_path = os.path.join(output_folder, f"{file_base}.{output_format.lower()}")
+        else:
+            out_path = os.path.splitext(f)[0] + f".{output_format.lower()}"
+        if os.path.exists(out_path):
+            conflicts_found = True
+            break
+
+    if conflicts_found:
+        resp = messagebox.askyesno(
+            "File already exists",
+            "One or more output files already exist.\n\nYes = Replace originals (overwrite)\nNo = Keep originals (append unique identifier)",
+        )
+        replace_policy = 'replace' if resp else 'keep'
+
     success = 0
     failed_files = []
     for file in file_list:
-        if convert_image(file, output_format, output_folder, width, height, keep_aspect, jpeg_quality):
+        if convert_image(file, output_format, output_folder, width, height, keep_aspect, jpeg_quality, conflict=replace_policy):
             success += 1
         else:
             failed_files.append(os.path.basename(file))
@@ -129,8 +164,42 @@ def convert_all():
     else:
         messagebox.showwarning("Completed with Errors", f"Converted {success} of {len(file_list)} files.\n\nFailed to convert:\n" + "\n".join(failed_files))
 
-    listbox.delete(0, tk.END)
+    for iid in file_tree.get_children():
+        file_tree.delete(iid)
     file_list.clear()
+
+
+def fmt_size(num_bytes: int) -> str:
+    try:
+        n = float(num_bytes)
+    except Exception:
+        return "?"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if n < 1024.0 or unit == "TB":
+            if unit == "B":
+                return f"{int(n)} {unit}"
+            return f"{n:.1f} {unit}"
+        n /= 1024.0
+
+
+def add_file(path: str):
+    if not path or path in file_list:
+        return
+    size_str = "?"
+    dims_str = "?"
+    try:
+        b = os.path.getsize(path)
+        size_str = fmt_size(b)
+    except Exception:
+        pass
+    try:
+        with Image.open(path) as im:
+            w, h = im.size
+            dims_str = f"{w} x {h}"
+    except Exception:
+        pass
+    file_list.append(path)
+    file_tree.insert("", tk.END, values=(os.path.basename(path), size_str, dims_str))
 
 
 def uninstall_app():
@@ -191,18 +260,34 @@ if (Test-Path $target) {{ Remove-Item -LiteralPath $target -Recurse -Force -Erro
     # Close GUI; the uninstaller will take over afterwards
     root.after(50, root.destroy)
 
+
+def open_git_page():
+    """Open the GitHub page in the default web browser."""
+    url = "https://github.com/Xerophayze/TEK-Media-Converter"
+    try:
+        webbrowser.open(url, new=2)
+    except Exception as e:
+        messagebox.showerror("Open Page", f"Failed to open GitHub page:\n{e}")
+
 # GUI setup
 root = TkinterDnD.Tk()
 root.title("Image Format Converter")
-root.geometry("600x550")
+root.geometry("500x600")
+root.minsize(500, 600)
 
-# Menu bar with File -> Uninstall, Exit
+# Menu bar with File -> Uninstall, Exit and Help -> View Git Page
 menubar = tk.Menu(root)
+
 filemenu = tk.Menu(menubar, tearoff=0)
 filemenu.add_command(label="Uninstall...", command=uninstall_app)
 filemenu.add_separator()
 filemenu.add_command(label="Exit", command=root.destroy)
 menubar.add_cascade(label="File", menu=filemenu)
+
+helpmenu = tk.Menu(menubar, tearoff=0)
+helpmenu.add_command(label="View Git Page", command=open_git_page)
+menubar.add_cascade(label="Help", menu=helpmenu)
+
 root.config(menu=menubar)
 
 # Set window icon if present
@@ -231,15 +316,41 @@ label.pack(pady=10)
 frame = tk.Frame(root)
 frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-scrollbar = Scrollbar(frame)
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+# Treeview for file details
+columns = ("name", "size", "dims")
+file_tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+file_tree.heading("name", text="File")
+file_tree.heading("size", text="Size")
+file_tree.heading("dims", text="Dimensions")
+file_tree.column("name", anchor="w", width=300, stretch=True)
+file_tree.column("size", anchor="e", width=100, stretch=False)
+file_tree.column("dims", anchor="center", width=120, stretch=False)
 
-listbox = Listbox(frame, selectmode=tk.SINGLE, yscrollcommand=scrollbar.set)
-listbox.pack(fill=tk.BOTH, expand=True)
-scrollbar.config(command=listbox.yview)
+vsb = ttk.Scrollbar(frame, orient="vertical", command=file_tree.yview)
+hsb = ttk.Scrollbar(frame, orient="horizontal", command=file_tree.xview)
+file_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-listbox.drop_target_register(DND_FILES)
-listbox.dnd_bind("<<Drop>>", drop_files)
+# Keep 'File' column filling available width while keeping Size/Dimensions fixed
+_SIZE_COL_W = 100
+_DIMS_COL_W = 120
+def _resize_columns(event):
+    try:
+        total = event.width
+        name_w = max(150, total - _SIZE_COL_W - _DIMS_COL_W - 2)
+        file_tree.column("name", width=name_w)
+        file_tree.column("size", width=_SIZE_COL_W)
+        file_tree.column("dims", width=_DIMS_COL_W)
+    except Exception:
+        pass
+file_tree.bind("<Configure>", _resize_columns)
+
+hsb.pack(side=tk.BOTTOM, fill=tk.X)
+vsb.pack(side=tk.RIGHT, fill=tk.Y)
+file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+# Drag-and-drop support on the tree
+file_tree.drop_target_register(DND_FILES)
+file_tree.dnd_bind("<<Drop>>", drop_files)
 
 browse_button = Button(root, text="Browse Files", command=browse_files)
 browse_button.pack(pady=5)
@@ -289,9 +400,18 @@ height_entry = tk.Entry(controls, textvariable=height_var, width=6)
 height_entry.grid(row=2, column=4, sticky="w", padx=(0,5), pady=5)
 
 # Aspect ratio and action row
+def on_aspect_toggle(*_):
+    if aspect_ratio_var.get():
+        # Maintain aspect: only width entry active; height disabled and cleared
+        height_var.set("")
+        height_entry.config(state="disabled")
+    else:
+        height_entry.config(state="normal")
+
 aspect_ratio_var = tk.BooleanVar(value=True)
-aspect_ratio_check = tk.Checkbutton(controls, text="Keep Aspect Ratio", variable=aspect_ratio_var)
+aspect_ratio_check = tk.Checkbutton(controls, text="Keep Aspect Ratio", variable=aspect_ratio_var, command=on_aspect_toggle)
 aspect_ratio_check.grid(row=3, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+on_aspect_toggle()
 
 convert_button = Button(controls, text="Convert", command=convert_all)
 convert_button.grid(row=3, column=4, sticky="e", padx=5, pady=5)
