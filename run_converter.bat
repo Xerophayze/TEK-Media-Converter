@@ -129,7 +129,7 @@ pause
 exit /b 1
 
 :SETUP_ENV
-if not defined PROGRESS_STARTED call :INIT_PROGRESS 6
+if not defined PROGRESS_STARTED call :INIT_PROGRESS 8
 echo Verifying Tcl/Tk availability...
 call :STEP Verifying Tcl/Tk
 call :SET_TK_ENV
@@ -199,6 +199,46 @@ if %errorlevel% neq 0 (
     )
 )
 
+REM FFmpeg setup (download and extract only if not present anywhere)
+set "APP_RES=%~dp0resources"
+set "FF_HOME=%APP_RES%\ffmpeg"
+set "FF_BIN=%FF_HOME%\bin"
+
+REM 1) Use bundled if present
+if exist "%FF_BIN%\ffmpeg.exe" goto FF_SETUP_DONE
+
+REM 2) Use system-installed ffmpeg if available
+where ffmpeg >nul 2>&1
+if %errorlevel%==0 (
+    set "FFMPEG_BIN=ffmpeg"
+    goto FF_SETUP_DONE
+)
+
+REM 3) Download and extract
+call :STEP Downloading FFmpeg
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile \"$env:TEMP\\ffmpeg.zip\" -UseBasicParsing } catch { exit 1 }"
+call :STEP Extracting FFmpeg
+set "FF_TMP_ZIP=%TEMP%\ffmpeg.zip"
+set "FF_TMP_DIR=%TEMP%\ffmpeg_extracted"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue \"$env:FF_TMP_DIR\""
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path \"$env:FF_TMP_ZIP\" -DestinationPath \"$env:FF_TMP_DIR\" -Force"
+if not exist "%FF_BIN%" mkdir "%FF_BIN%" >nul 2>&1
+for /d %%G in ("%FF_TMP_DIR%\ffmpeg-*") do set "FF_SRC=%%G"
+if defined FF_SRC if exist "%FF_SRC%\bin\ffmpeg.exe" (
+    copy /Y "%FF_SRC%\bin\*.*" "%FF_BIN%\" >nul
+)
+
+REM Verify install and set marker
+if exist "%FF_BIN%\ffmpeg.exe" (
+    set "FFMPEG_BIN=%FF_BIN%\ffmpeg.exe"
+    (echo installed) > "%FF_HOME%\.installed"
+) else (
+    echo FFmpeg setup failed. Continuing without bundling; the app may still work if ffmpeg is in PATH.
+)
+
+:FF_SETUP_DONE
+if not defined FFMPEG_BIN if exist "%FF_BIN%\ffmpeg.exe" set "FFMPEG_BIN=%FF_BIN%\ffmpeg.exe"
+
 REM Close progress UI if it was started
 if defined PROGRESS_STARTED (
     type nul > "%SETUP_FLAG%"
@@ -230,6 +270,14 @@ del "%IC_TMP%" >nul 2>&1
 if exist "%PY_BASE_FINAL%\tcl\tcl8.6\init.tcl" set "TCL_LIBRARY=%PY_BASE_FINAL%\tcl\tcl8.6"
 if exist "%PY_BASE_FINAL%\tcl\tk8.6\tk.tcl" set "TK_LIBRARY=%PY_BASE_FINAL%\tcl\tk8.6"
 if exist "%PY_BASE_FINAL%\DLLs" set "PATH=%PY_BASE_FINAL%\DLLs;%PY_BASE_FINAL%;%PATH%"
+
+REM Ensure ffmpeg is on PATH for this session
+set "APP_RES=%~dp0resources"
+set "FF_BIN=%APP_RES%\ffmpeg\bin"
+if exist "%FF_BIN%\ffmpeg.exe" (
+    set "FFMPEG_BIN=%FF_BIN%\ffmpeg.exe"
+    set "PATH=%FF_BIN%;%PATH%"
+)
 
 echo Starting Image Converter...
 if exist "%RERUN_FLAG%" (

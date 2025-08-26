@@ -1,21 +1,8 @@
-import subprocess
-import sys
-
-# Auto-install required packages
-REQUIRED_MODULES = ['Pillow', 'pillow-heif', 'tkinterdnd2']
-for module in REQUIRED_MODULES:
-    try:
-        if module == 'Pillow':
-            import PIL
-        elif module == 'pillow-heif':
-            import pillow_heif
-        else:
-            __import__(module)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", module])
-
-# Now import them
 import os
+import sys
+import subprocess
+import threading
+import time
 import tempfile
 import webbrowser
 import tkinter as tk
@@ -44,6 +31,36 @@ def unique_path(path: str) -> str:
         i += 1
         candidate = f"{base} ({i}){ext}"
     return candidate
+
+def find_ffmpeg() -> str:
+    """Return path to ffmpeg executable. Prefer bundled ffmpeg under resources/ffmpeg/bin.
+    Fallback to 'ffmpeg' on PATH."""
+    # Allow override via env
+    env_bin = os.environ.get("FFMPEG_BIN")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+    # Bundled location under resources
+    bundled = os.path.join(RESOURCES_DIR, "ffmpeg", "bin", "ffmpeg.exe")
+    if os.path.exists(bundled):
+        return bundled
+    # Unix-y fallback if ever applicable
+    bundled2 = os.path.join(RESOURCES_DIR, "ffmpeg", "bin", "ffmpeg")
+    if os.path.exists(bundled2):
+        return bundled2
+    return "ffmpeg"
+
+def find_ffprobe() -> str:
+    """Return path to ffprobe executable matching find_ffmpeg logic."""
+    env_bin = os.environ.get("FFPROBE_BIN")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+    bundled = os.path.join(RESOURCES_DIR, "ffmpeg", "bin", "ffprobe.exe")
+    if os.path.exists(bundled):
+        return bundled
+    bundled2 = os.path.join(RESOURCES_DIR, "ffmpeg", "bin", "ffprobe")
+    if os.path.exists(bundled2):
+        return bundled2
+    return "ffprobe"
 
 def convert_image(input_path, output_format, output_folder, width=None, height=None, keep_aspect=True, jpeg_quality=95, conflict='keep'):
     try:
@@ -182,6 +199,13 @@ def fmt_size(num_bytes: int) -> str:
         n /= 1024.0
 
 
+def is_raw_hevc(path: str) -> bool:
+    """Return True if the file extension indicates a raw HEVC elementary stream.
+    Such files typically have no container (e.g., .hevc, .h265) and need input hints."""
+    ext = os.path.splitext(path)[1].lower()
+    return ext in (".hevc", ".h265")
+
+
 def add_file(path: str):
     if not path or path in file_list:
         return
@@ -273,7 +297,7 @@ def open_git_page():
 root = TkinterDnD.Tk()
 root.title("Image Format Converter")
 root.geometry("500x600")
-root.minsize(500, 600)
+root.minsize(500, 650)
 
 # Menu bar with File -> Uninstall, Exit and Help -> View Git Page
 menubar = tk.Menu(root)
@@ -310,10 +334,18 @@ if os.path.exists(LOGO_PATH):
     except Exception as e:
         print(f"Could not load logo: {e}")
 
-label = tk.Label(root, text="Drag & Drop Image Files Below or Use Browse Button")
+"""Notebook with two tabs: Images and Video"""
+notebook = ttk.Notebook(root)
+notebook.pack(fill=tk.BOTH, expand=True)
+
+# ----- Image Tab -----
+image_tab = tk.Frame(notebook)
+notebook.add(image_tab, text="Images")
+
+label = tk.Label(image_tab, text="Drag & Drop Image Files Below or Use Browse Button")
 label.pack(pady=10)
 
-frame = tk.Frame(root)
+frame = tk.Frame(image_tab)
 frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
 # Treeview for file details
@@ -352,11 +384,11 @@ file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 file_tree.drop_target_register(DND_FILES)
 file_tree.dnd_bind("<<Drop>>", drop_files)
 
-browse_button = Button(root, text="Browse Files", command=browse_files)
+browse_button = Button(image_tab, text="Browse Files", command=browse_files)
 browse_button.pack(pady=5)
 
 # --- Options Panel (organized) ---
-controls = tk.LabelFrame(root, text="Options")
+controls = tk.LabelFrame(image_tab, text="Options")
 controls.pack(pady=10, fill=tk.X, padx=10)
 
 # Output folder row
@@ -436,5 +468,294 @@ format_var.trace("w", on_format_change)
 on_format_change()
 
 file_list = []
+
+# ============================ Video Tab ============================
+video_tab = tk.Frame(notebook)
+notebook.add(video_tab, text="Videos")
+
+vlabel = tk.Label(video_tab, text="Drag & Drop Video Files Below or Use Browse Button")
+vlabel.pack(pady=10)
+
+vframe = tk.Frame(video_tab)
+vframe.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+v_columns = ("name", "size")
+video_tree = ttk.Treeview(vframe, columns=v_columns, show="headings", selectmode="extended")
+video_tree.heading("name", text="File")
+video_tree.heading("size", text="Size")
+video_tree.column("name", anchor="w", width=340, stretch=True)
+video_tree.column("size", anchor="e", width=120, stretch=False)
+
+v_vsb = ttk.Scrollbar(vframe, orient="vertical", command=video_tree.yview)
+v_hsb = ttk.Scrollbar(vframe, orient="horizontal", command=video_tree.xview)
+video_tree.configure(yscrollcommand=v_vsb.set, xscrollcommand=v_hsb.set)
+v_hsb.pack(side=tk.BOTTOM, fill=tk.X)
+v_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+video_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+def add_video_file(path: str):
+    if not path or path in video_file_list:
+        return
+    size_str = "?"
+    try:
+        b = os.path.getsize(path)
+        size_str = fmt_size(b)
+    except Exception:
+        pass
+    video_file_list.append(path)
+    video_tree.insert("", tk.END, values=(os.path.basename(path), size_str))
+
+def browse_videos():
+    files = filedialog.askopenfilenames(
+        filetypes=[
+            ("Video Files", "*.mp4 *.mkv *.mov *.avi *.m4v *.webm *.hevc *.h265 *.ts *.m2ts"),
+            ("All files", "*.*"),
+        ]
+    )
+    for f in files:
+        add_video_file(f)
+
+def drop_videos(event):
+    files = root.tk.splitlist(event.data)
+    for f in files:
+        add_video_file(f)
+
+video_tree.drop_target_register(DND_FILES)
+video_tree.dnd_bind("<<Drop>>", drop_videos)
+
+vbrowse_button = Button(video_tab, text="Browse Files", command=browse_videos)
+vbrowse_button.pack(pady=5)
+
+vcontrols = tk.LabelFrame(video_tab, text="Options")
+vcontrols.pack(pady=10, fill=tk.X, padx=10)
+
+# Output folder row (video)
+video_output_folder_path = StringVar()
+video_output_folder_path.set("Output: Same as source folder")
+
+def select_video_output_folder():
+    folder_selected = filedialog.askdirectory()
+    if folder_selected:
+        video_output_folder_path.set(folder_selected)
+
+tk.Label(vcontrols, text="Output Folder:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+video_output_folder_label = tk.Label(vcontrols, textvariable=video_output_folder_path, fg="grey", anchor="w")
+video_output_folder_label.grid(row=0, column=1, columnspan=3, sticky="we", padx=5, pady=5)
+select_video_folder_button = Button(vcontrols, text="Browse...", command=select_video_output_folder)
+select_video_folder_button.grid(row=0, column=4, sticky="e", padx=5, pady=5)
+
+# Format and quality (CRF) row
+tk.Label(vcontrols, text="Format:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+video_formats = ["MP4", "MKV", "MOV", "AVI", "M4V", "WEBM"]
+video_format_var = StringVar(root)
+video_format_var.set(video_formats[0])
+video_format_menu = OptionMenu(vcontrols, video_format_var, *video_formats)
+video_format_menu.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+vquality_label = tk.Label(vcontrols, text="Quality (CRF):")
+vquality_label.grid(row=1, column=2, sticky="e", padx=5, pady=5)
+vquality_var = tk.IntVar(value=23)
+vquality_slider = tk.Scale(vcontrols, from_=0, to=51, orient=tk.HORIZONTAL, variable=vquality_var, length=180)
+vquality_slider.grid(row=1, column=3, columnspan=2, sticky="we", padx=5, pady=5)
+
+# Resize row (video)
+tk.Label(vcontrols, text="Resize:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+vwidth_var = StringVar()
+vheight_var = StringVar()
+tk.Label(vcontrols, text="W:").grid(row=2, column=1, sticky="w", padx=(5,0), pady=5)
+vwidth_entry = tk.Entry(vcontrols, textvariable=vwidth_var, width=6)
+vwidth_entry.grid(row=2, column=2, sticky="w", padx=(0,5), pady=5)
+tk.Label(vcontrols, text="H:").grid(row=2, column=3, sticky="w", padx=(5,0), pady=5)
+vheight_entry = tk.Entry(vcontrols, textvariable=vheight_var, width=6)
+vheight_entry.grid(row=2, column=4, sticky="w", padx=(0,5), pady=5)
+
+def on_v_aspect_toggle(*_):
+    if vaspect_ratio_var.get():
+        vheight_var.set("")
+        vheight_entry.config(state="disabled")
+    else:
+        vheight_entry.config(state="normal")
+
+vaspect_ratio_var = tk.BooleanVar(value=True)
+vaspect_ratio_check = tk.Checkbutton(vcontrols, text="Keep Aspect Ratio", variable=vaspect_ratio_var, command=on_v_aspect_toggle)
+vaspect_ratio_check.grid(row=3, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+on_v_aspect_toggle()
+
+def convert_all_videos():
+    if not video_file_list:
+        messagebox.showwarning("No Files", "Please add some video files first.")
+        return
+
+    ff = find_ffmpeg()
+    fp = find_ffprobe()
+    # Quick availability check
+    try:
+        subprocess.run([ff, "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    except Exception:
+        messagebox.showerror("FFmpeg Missing", "FFmpeg is not available. Please re-run the installer or ensure ffmpeg is in PATH.")
+        return
+
+    out_fmt = video_format_var.get().lower()  # container/ext
+    out_folder = video_output_folder_path.get()
+    if out_folder == "Output: Same as source folder":
+        out_folder = ""
+
+    # Parse resize and quality
+    try:
+        vw = int(vwidth_var.get()) if vwidth_var.get() else None
+        vh = int(vheight_var.get()) if vheight_var.get() else None
+    except ValueError:
+        messagebox.showerror("Invalid Input", "Width and height must be valid numbers.")
+        return
+    vkeep = vaspect_ratio_var.get()
+    vcrf = vquality_var.get()
+
+    # Conflict policy detection (once per batch)
+    replace_policy = 'keep'
+    conflicts_found = False
+    for f in video_file_list:
+        base = os.path.splitext(os.path.basename(f))[0]
+        if out_folder:
+            outp = os.path.join(out_folder, f"{base}.{out_fmt}")
+        else:
+            outp = os.path.splitext(f)[0] + f".{out_fmt}"
+        if os.path.exists(outp):
+            conflicts_found = True
+            break
+    if conflicts_found:
+        resp = messagebox.askyesno(
+            "File already exists",
+            "One or more output files already exist.\n\nYes = Replace originals (overwrite)\nNo = Keep originals (append unique identifier)",
+        )
+        replace_policy = 'replace' if resp else 'keep'
+
+    def build_scale():
+        if vw and vh and not vkeep:
+            return f"scale={vw}:{vh}"
+        if vw and vkeep:
+            return f"scale={vw}:-2"
+        if vh and vkeep:
+            return f"scale=-2:{vh}"
+        return None
+
+    def input_has_audio(pth: str) -> bool:
+        try:
+            # Returns index if audio stream exists; empty otherwise
+            r = subprocess.run(
+                [fp, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", pth],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return bool(r.stdout.strip())
+        except Exception:
+            return False
+
+    success = 0
+    failed = []
+    for f in video_file_list:
+        base = os.path.splitext(os.path.basename(f))[0]
+        if out_folder:
+            outp = os.path.join(out_folder, f"{base}.{out_fmt}")
+        else:
+            outp = os.path.splitext(f)[0] + f".{out_fmt}"
+        if os.path.exists(outp) and replace_policy == 'keep':
+            outp = unique_path(outp)
+
+        # Build ffmpeg command
+        in_args = []
+        if is_raw_hevc(f):
+            # Hint demuxer and generate timestamps for raw elementary stream
+            in_args += ["-f", "hevc", "-fflags", "+genpts"]
+        cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", *in_args, "-i", f]
+        scale = build_scale()
+        if scale:
+            cmd += ["-vf", scale]
+
+        # Choose codec based on container (simple defaults)
+        vcodec = "libx264"
+        if out_fmt in ("webm",):
+            vcodec = "libvpx-vp9"
+        cmd += ["-c:v", vcodec, "-crf", str(vcrf), "-pix_fmt", "yuv420p"]
+
+        # Faststart for mp4/mov/m4v
+        if out_fmt in ("mp4", "mov", "m4v"):
+            cmd += ["-movflags", "+faststart"]
+
+        # Audio handling executed in a worker thread; show a simple progress dialog while encoding
+        result = {"ok": False}
+
+        def worker_run():
+            try:
+                if input_has_audio(f):
+                    cmd_copy = cmd + ["-c:a", "copy", outp]
+                    res = subprocess.run(cmd_copy, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if res.returncode != 0:
+                        cmd_aac = cmd + ["-c:a", "aac", "-b:a", "192k", outp]
+                        res2 = subprocess.run(cmd_aac, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        result["ok"] = (res2.returncode == 0)
+                    else:
+                        result["ok"] = True
+                else:
+                    # No audio stream: don't specify audio codecs
+                    res = subprocess.run(cmd + [outp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    result["ok"] = (res.returncode == 0)
+            except Exception:
+                result["ok"] = False
+
+        # Progress dialog UI
+        prog = tk.Toplevel(root)
+        prog.title("Converting...")
+        prog.resizable(False, False)
+        lbl = ttk.Label(prog, text=f"Converting: {os.path.basename(f)}")
+        lbl.pack(padx=15, pady=(12, 6))
+        pbar = ttk.Progressbar(prog, mode="indeterminate", length=320)
+        pbar.pack(padx=15, pady=(0, 12))
+        pbar.start(10)
+
+        # Center on parent
+        prog.update_idletasks()
+        x = root.winfo_rootx() + (root.winfo_width() // 2) - (prog.winfo_width() // 2)
+        y = root.winfo_rooty() + (root.winfo_height() // 2) - (prog.winfo_height() // 2)
+        prog.geometry(f"+{x}+{y}")
+
+        t = threading.Thread(target=worker_run, daemon=True)
+        t.start()
+        # Keep UI responsive while encoding runs
+        while t.is_alive():
+            try:
+                prog.update()
+                root.update_idletasks()
+                time.sleep(0.05)
+            except tk.TclError:
+                break
+        try:
+            pbar.stop()
+            prog.destroy()
+        except tk.TclError:
+            pass
+
+        if not result["ok"]:
+            failed.append(os.path.basename(f))
+            continue
+        success += 1
+
+    if not failed:
+        messagebox.showinfo("Done", f"Successfully converted {success} of {len(video_file_list)} videos to {video_format_var.get()}.")
+    else:
+        messagebox.showwarning("Completed with Errors", f"Converted {success} of {len(video_file_list)} videos.\n\nFailed:\n" + "\n".join(failed))
+
+    for iid in video_tree.get_children():
+        video_tree.delete(iid)
+    video_file_list.clear()
+
+vconvert_button = Button(vcontrols, text="Convert", command=convert_all_videos)
+vconvert_button.grid(row=3, column=4, sticky="e", padx=5, pady=5)
+
+vcontrols.columnconfigure(1, weight=1)
+vcontrols.columnconfigure(3, weight=1)
+vcontrols.columnconfigure(4, weight=0)
+
+video_file_list = []
 
 root.mainloop()
