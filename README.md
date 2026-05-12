@@ -1,154 +1,215 @@
 # Image Converter
 
-A lightweight Windows GUI to batch convert images (including HEIC) to common formats with optional resizing, aspect ratio control, and JPEG quality. A one-click installer (`run_converter.bat`) silently sets up Python, a virtual environment, dependencies, and launches the app. Includes a File menu with self-uninstall.
+Image Converter is a lightweight Windows GUI for batch converting images and videos. It can convert common image formats, including HEIC, and common video containers through FFmpeg. The portable launcher (`run_converter.bat`) handles first-run setup, then uses the existing environment on later launches so the app starts without reinstalling everything.
 
 ## Features
 
-- Drag-and-drop or browse to add files
-- Convert to JPEG, PNG, BMP, GIF, or TIFF
-- Optional resize (width/height) with “Keep Aspect Ratio”
-- JPEG quality slider
-- Output to source folder or a selected destination
-- Desktop shortcut auto-created with custom icon
-- Detailed file list with filename, size, and dimensions
-- Help menu:
-  - View Git Page (opens project repository)
-- File menu:
-  - Uninstall… (self-removes app folder and desktop shortcut)
-  - Exit
-- Silent installer with progress UI and auto Python setup
-- Tcl/Tk initialization handled for first run on clean systems
-- Smart overwrite handling: if a target file already exists, choose to Replace (overwrite) or Keep originals (appends a unique " (n)" suffix)
+- Image tab with drag-and-drop and file browser support
+- Video tab with drag-and-drop and file browser support
+- Batch image conversion to JPEG, PNG, BMP, GIF, TIFF, or WEBP
+- Batch video conversion to MP4, MKV, MOV, AVI, M4V, or WEBM
+- HEIC image input support through `pillow-heif`
+- Raw HEVC/H.265 video input support for `.hevc` and `.h265` files
+- Optional image and video resize controls
+- Keep Aspect Ratio option for resizing
+- JPEG and WEBP quality slider
+- Video CRF quality slider
+- Output to the source folder or a selected destination folder
+- Per-batch overwrite handling: replace existing outputs or keep originals with numbered filenames
+- Detailed image file list with filename, size, and dimensions
+- Video file list with filename and size
+- Per-file video progress dialog while FFmpeg runs
+- Desktop shortcut creation with the bundled icon
+- File menu with Uninstall and Exit
+- Help menu link to the project Git page
 
-### New: Video Conversion
+## Supported Formats
 
-- Separate Videos tab with drag-and-drop and Browse
-- Convert to MP4, MKV, MOV, AVI, M4V, or WEBM
-- CRF quality control (0–51) and optional resizing with Keep Aspect
-- Per-file progress dialog while FFmpeg runs
-- HEVC/H.265 support, including raw elementary streams (`.hevc`, `.h265`)
-  - Raw HEVC is auto-hinted to FFmpeg and timestamps are generated
-  - By default, video is re-encoded to H.264 (or VP9 for WEBM) for compatibility
-- Integrated FFmpeg: auto-downloaded to `resources/ffmpeg/bin` on first run (or uses system FFmpeg if present)
+### Images
 
-## Folder structure
+Input selection filters for:
 
-```
+- HEIC
+- PNG
+- JPG/JPEG
+- BMP
+- GIF
+- TIFF
+- WEBP
+
+Output options:
+
+- JPEG
+- PNG
+- BMP
+- GIF
+- TIFF
+- WEBP
+
+### Videos
+
+Input selection filters for:
+
+- MP4
+- MKV
+- MOV
+- AVI
+- M4V
+- WEBM
+- HEVC/H.265 raw streams
+- TS/M2TS
+
+Output options:
+
+- MP4
+- MKV
+- MOV
+- AVI
+- M4V
+- WEBM
+
+Video conversion uses FFmpeg. Most video outputs use H.264 (`libx264`); WEBM uses VP9 (`libvpx-vp9`). Audio is copied when possible and falls back to AAC at 192 kbps when copying fails.
+
+## Folder Structure
+
+```text
 ImageConverter/
-  heic_to_jpg_gui.py          # Tkinter/TkinterDnD2 GUI
-  run_converter.bat           # Silent installer/launcher (creates venv, installs deps, launches GUI)
-  requirements.txt            # Pillow, pillow-heif, tkinterdnd2
+  heic_to_jpg_gui.py              # Tkinter/TkinterDnD2 GUI
+  run_converter.bat               # Windows setup/launcher script
+  requirements.txt                # Pillow, pillow-heif, tkinterdnd2
   resources/
-    AppLogo.png               # App logo (optional)
-    tekutah_logo_icon_Square.ico  # Icon used for window + desktop shortcut
-    setup_progress.ps1        # Hidden progress UI during install
-    ffmpeg/                   # Created on first run if needed
-      bin/                    # ffmpeg.exe and ffprobe.exe (downloaded)
-  LICENSE                     # MIT License
-  README.md                   # This file
+    AppLogo.png                   # Optional app logo
+    tekutah_logo_icon_Square.ico  # Window and desktop shortcut icon
+    setup_progress.ps1            # First-run setup progress UI
+    ffmpeg/
+      bin/
+        ffmpeg.exe                # Bundled FFmpeg, if downloaded or included
+        ffprobe.exe
+        ffplay.exe
+  venv/                           # Created by the launcher
+  LICENSE
+  README.md
 ```
-
-Key files referenced in code:
-- GUI: `heic_to_jpg_gui.py`
-- Installer/launcher: `run_converter.bat`
-- Resources: `resources/`
 
 ## Requirements
 
-- Windows 10/11
-- Internet access on first launch:
-  - to install Python if missing and pip dependencies
-  - to download FFmpeg (if not already on PATH)
-- No manual Python setup required; the launcher bootstraps everything
+- Windows 10 or Windows 11
+- Internet access on first setup if Python packages or FFmpeg need to be downloaded
+- Python 3.11+ or the Windows `py` launcher
 
-## Installation
+No manual Python setup is normally required. If Python is missing, the launcher can download and install Python automatically. If Python is already available, it creates and uses the local `venv` folder.
 
-There are two ways to run the app:
+## Installation and Launch
 
-### Option A: Clone + Batch Launcher (portable)
+### Option A: Portable Batch Launcher
 
-- Clone or download this repository.
-- Double-click `run_converter.bat` in `ImageConverter/`.
-- A small progress window will appear while:
-  - Python is detected/installed if needed
-  - A virtual environment is created next to `run_converter.bat`
-  - Dependencies from `requirements.txt` are installed
-  - Tcl/Tk is verified and initialized
-  - FFmpeg is located (system) or downloaded into `resources/ffmpeg/bin`
-- A desktop shortcut “Image Converter.lnk” is created (icon from `resources/tekutah_logo_icon_Square.ico`).
-- The GUI launches automatically. Closing the GUI closes the console window.
+1. Clone or download this folder.
+2. Double-click `run_converter.bat`.
+3. On first setup, the launcher:
+   - detects Python or installs it if needed
+   - creates `venv` beside `run_converter.bat`
+   - installs packages from `requirements.txt`
+   - verifies Tcl/Tk for the Tkinter GUI
+   - finds FFmpeg on PATH or downloads it into `resources/ffmpeg/bin`
+   - creates or updates the desktop shortcut
+   - starts the GUI
 
-Note: For Option A, the virtual environment is created in the same directory as `run_converter.bat`.
+On later launches, the launcher first checks whether the existing `venv` can import the required packages and whether FFmpeg is available. If everything is ready, it skips the setup progress window and starts the GUI directly.
 
-### Option B: Self-contained Installer (EXE)
+### Option B: Self-contained Installer
 
-- Download and run the provided installer EXE.
-- The installer places the application in a data location (no admin required) and creates a desktop shortcut.
-- The EXE is fully self-contained — it does not require any other files from this repository to run.
+Run `TEKImageConverter_installer.exe` if you want to install from the packaged executable instead of using the portable batch launcher.
 
 ## Usage
 
-- Drag files into the list or click “Browse Files”.
-- Choose:
-  - Format: JPEG, PNG, BMP, GIF, or TIFF
-  - JPEG Quality (if JPEG)
-  - Resize options (W/H) and “Keep Aspect Ratio”
-  - Output folder (leave as “Output: Same as source folder” for in-place outputs)
-- Click Convert. A summary dialog shows successes/failures; the list clears after completion.
+### Images Tab
 
-### Videos tab
+1. Drag image files into the list or click Browse Files.
+2. Choose an output format.
+3. Set JPEG/WEBP quality when applicable.
+4. Optionally set resize width and height.
+5. Choose an output folder or leave it as same as source.
+6. Click Convert.
 
-- Drag video files into the list or click “Browse Files”. Supported inputs include container formats (MP4/MKV/MOV/AVI/M4V/WEBM) and raw HEVC streams (`.hevc`, `.h265`).
-- Choose:
-  - Output format: MP4, MKV, MOV, AVI, M4V, WEBM
-  - Quality (CRF): lower = higher quality/larger file (typical: 18–24)
-  - Optional resize and “Keep Aspect Ratio”
-  - Output folder (or same as source)
-- Click Convert. A small progress dialog appears per file while FFmpeg runs.
-- By default, video is encoded with H.264 (`libx264`) except WEBM which uses VP9. Audio is copied when possible, or re-encoded to AAC 192 kbps if needed.
+If Keep Aspect Ratio is enabled, the height field is disabled and the app computes height from the width.
 
-Notes:
-- When “Keep Aspect Ratio” is checked, height is disabled; uncheck to specify both width and height.
-- If any output files already exist in the chosen destination, you’ll be prompted once for the action for this batch:
-  - Yes = Replace originals (overwrite)
-  - No = Keep originals (the app writes new files as `filename (1).ext`, `filename (2).ext`, …)
+### Videos Tab
+
+1. Drag video files into the list or click Browse Files.
+2. Choose an output container.
+3. Set CRF quality. Lower CRF means higher quality and larger files.
+4. Optionally set resize width and height.
+5. Choose an output folder or leave it as same as source.
+6. Click Convert.
+
+For raw `.hevc` and `.h265` files, the app passes HEVC input hints to FFmpeg and generates timestamps for conversion.
+
+## Overwrite Behavior
+
+When one or more output files already exist, the app prompts once for the batch:
+
+- Yes: replace existing output files
+- No: keep originals and create numbered filenames such as `filename (1).mp4`
 
 ## Uninstall
 
-- Open the app → File → Uninstall…
-- Confirm the prompt.
-- The app closes; a helper script waits for the process to exit, then:
-  - Deletes the app’s folder (the directory containing `heic_to_jpg_gui.py` and `run_converter.bat`)
-  - Removes the desktop shortcut
-- If the app is installed under protected locations (e.g., Program Files), you may need to run as Administrator for full removal.
+Open the app and choose File > Uninstall. After confirmation, the app starts a hidden PowerShell helper that waits for the GUI to close, removes the app folder, and removes the desktop shortcut.
 
-Note: The temporary virtual environment created under `%TEMP%` may be cleaned up by the OS over time. It doesn’t reside in the app directory.
+If the app is stored in a protected location, Windows may require administrator rights to remove every file.
 
 ## Troubleshooting
 
-- Tcl/Tk errors on first run:
-  - The launcher (`run_converter.bat`) sets `TCL_LIBRARY`/`TK_LIBRARY` and verifies Tk by creating/destroying a root window, with retries. Simply re-run the launcher if the GUI didn’t appear.
-- Progress window says “step is still running”:
-  - The script force-closes the progress UI on exit and relaunch. If you still see it, re-run `run_converter.bat`.
-- Console stays open after closing GUI:
-  - `run_converter.bat` exits after the Python process ends. If you launched from an existing console, that console will also close. Use the desktop shortcut to avoid losing a working shell.
+### Setup Window Gets Stuck on Later Launches
 
-- FFmpeg downloads again every run:
-  - The launcher now checks for bundled `resources/ffmpeg/bin/ffmpeg.exe` and system `ffmpeg` before downloading. If it still re-downloads, verify write permissions to `resources/` and that AV isn’t removing the files.
-- Raw `.hevc/.h265` fails:
-  - The app auto-detects raw HEVC and hints FFmpeg with `-f hevc -fflags +genpts`. If a specific file fails, try converting to MP4 with default settings and share the last lines from a manual run with `ffmpeg -v info`.
+The launcher now has a warm-start check before opening the setup progress window. If `venv` already has the required packages and FFmpeg is available, setup is skipped and the GUI starts directly.
+
+If it still gets stuck:
+
+- close any old "Image Converter - Setup" windows
+- make sure `venv\Scripts\python.exe` exists
+- make sure `resources\ffmpeg\bin\ffmpeg.exe` exists or `ffmpeg` is on PATH
+- rerun `run_converter.bat`
+
+If the environment is actually corrupted, delete `venv` once and rerun the launcher so it can rebuild it.
+
+### Tcl/Tk Errors
+
+The launcher sets `TCL_LIBRARY`, `TK_LIBRARY`, and the base Python DLL path before starting the GUI. If Tkinter fails immediately after Python installation, close the launcher and run `run_converter.bat` again.
+
+### Dependencies Reinstall or Fail
+
+The launcher installs packages through the virtual environment's Python:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+If install fails, verify internet access and try rerunning the launcher.
+
+### FFmpeg Downloads Again
+
+The launcher checks for `resources\ffmpeg\bin\ffmpeg.exe` first, then checks system PATH. If FFmpeg downloads repeatedly, verify write permissions under `resources\` and check whether antivirus software is deleting the binaries.
+
+### Raw HEVC/H.265 Fails
+
+The app auto-detects `.hevc` and `.h265` extensions and passes `-f hevc -fflags +genpts` to FFmpeg. If a specific file still fails, try converting to MP4 with default settings first.
 
 ## Development
 
-- Direct run without installer:
-  - Install Python 3.11+.
-  - `pip install -r requirements.txt`
-  - `python heic_to_jpg_gui.py`
-- Dependencies (see `requirements.txt`):
-  - Pillow
-  - pillow-heif
-  - tkinterdnd2
+Direct run without the launcher:
+
+```powershell
+py -3 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe heic_to_jpg_gui.py
+```
+
+Dependencies:
+
+- Pillow
+- pillow-heif
+- tkinterdnd2
 
 ## License
 
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See `LICENSE` for details.

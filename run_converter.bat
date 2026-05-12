@@ -129,6 +129,24 @@ pause
 exit /b 1
 
 :SETUP_ENV
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+if not exist "%VENV_PY%" goto FAST_START_DONE
+"%VENV_PY%" -c "import PIL, pillow_heif, tkinterdnd2, tkinter" >nul 2>&1
+if %errorlevel% neq 0 goto FAST_START_DONE
+set "APP_RES=%~dp0resources"
+set "FF_BIN=%APP_RES%\ffmpeg\bin"
+if exist "%FF_BIN%\ffmpeg.exe" (
+    set "FFMPEG_BIN=%FF_BIN%\ffmpeg.exe"
+    goto LAUNCH_READY
+)
+where ffmpeg >nul 2>&1
+if %errorlevel% equ 0 (
+    set "FFMPEG_BIN=ffmpeg"
+    goto LAUNCH_READY
+)
+
+:FAST_START_DONE
+
 if not defined PROGRESS_STARTED call :INIT_PROGRESS 8
 echo Verifying Tcl/Tk availability...
 call :STEP Verifying Tcl/Tk
@@ -153,6 +171,15 @@ if %errorlevel% neq 0 (
 echo Activating virtual environment...
 call "%VENV_DIR%\Scripts\activate.bat"
 
+REM Check if core packages are installed; if not, reinstall (handles corrupt/empty venv)
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+set "SKIP_INSTALL=0"
+"%VENV_PY%" -c "import PIL" >nul 2>&1
+if %errorlevel% equ 0 set "SKIP_INSTALL=1"
+
+if "%SKIP_INSTALL%"=="1" goto DEPS_DONE
+
+:INSTALL_DEPS
 echo Installing dependencies from requirements.txt...
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 if not exist "%VENV_PY%" (
@@ -199,6 +226,7 @@ if %errorlevel% neq 0 (
     )
 )
 
+:DEPS_DONE
 REM FFmpeg setup (download and extract only if not present anywhere)
 set "APP_RES=%~dp0resources"
 set "FF_HOME=%APP_RES%\ffmpeg"
@@ -239,6 +267,7 @@ if exist "%FF_BIN%\ffmpeg.exe" (
 :FF_SETUP_DONE
 if not defined FFMPEG_BIN if exist "%FF_BIN%\ffmpeg.exe" set "FFMPEG_BIN=%FF_BIN%\ffmpeg.exe"
 
+:LAUNCH_READY
 REM Close progress UI if it was started
 if defined PROGRESS_STARTED (
     type nul > "%SETUP_FLAG%"

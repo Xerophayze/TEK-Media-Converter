@@ -1,0 +1,26 @@
+# Python virtual environment and caches
+venv/
+__pycache__/
+*.py[cod]
+
+# Local/generated FFmpeg bundle
+resources/ffmpeg/
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Runtime/temp artifacts
+*.log
+*.tmp
+*.bak
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

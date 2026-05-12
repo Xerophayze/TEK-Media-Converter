@@ -103,10 +103,12 @@ def convert_image(input_path, output_format, output_folder, width=None, height=N
 
         # --- Save Logic ---
         save_options = {}
-        if output_format.upper() == 'JPEG':
+        ofmt = output_format.upper()
+        if ofmt in ('JPEG', 'WEBP'):
+            # Apply quality for JPEG and WEBP
             save_options['quality'] = jpeg_quality
         
-        image.save(output_path, output_format.upper(), **save_options)
+        image.save(output_path, ofmt, **save_options)
         return True
     except Exception as e:
         print(f"Failed to convert {input_path}: {e}")
@@ -114,7 +116,7 @@ def convert_image(input_path, output_format, output_folder, width=None, height=N
 
 def browse_files():
     files = filedialog.askopenfilenames(
-        filetypes=[("Image Files", "*.heic *.png *.jpg *.jpeg *.bmp *.gif *.tiff"), ("All files", "*.*")]
+        filetypes=[("Image Files", "*.heic *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp"), ("All files", "*.*")]
     )
     for file in files:
         add_file(file)
@@ -406,15 +408,15 @@ output_folder_label.grid(row=0, column=1, columnspan=3, sticky="we", padx=5, pad
 select_folder_button = Button(controls, text="Browse...", command=select_output_folder)
 select_folder_button.grid(row=0, column=4, sticky="e", padx=5, pady=5)
 
-# Format + JPEG quality row
+# Format + quality row
 tk.Label(controls, text="Format:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-formats = ["JPEG", "PNG", "BMP", "GIF", "TIFF"]
+formats = ["JPEG", "PNG", "BMP", "GIF", "TIFF", "WEBP"]
 format_var = StringVar(root)
 format_var.set(formats[0])
 format_menu = OptionMenu(controls, format_var, *formats)
 format_menu.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-quality_label = tk.Label(controls, text="JPEG Quality:")
+quality_label = tk.Label(controls, text="Quality:")
 quality_label.grid(row=1, column=2, sticky="e", padx=5, pady=5)
 quality_var = tk.IntVar(value=95)
 quality_slider = tk.Scale(controls, from_=1, to=100, orient=tk.HORIZONTAL, variable=quality_var, length=180)
@@ -455,7 +457,10 @@ controls.columnconfigure(4, weight=0)
 
 # Show/hide quality controls based on format
 def on_format_change(*args):
-    if format_var.get() == "JPEG":
+    fmt = format_var.get()
+    if fmt in ("JPEG", "WEBP"):
+        # Show and update label for quality-supported formats
+        quality_label.config(text=("JPEG Quality:" if fmt == "JPEG" else "WEBP Quality:"))
         quality_label.grid()
         quality_slider.grid()
     else:
